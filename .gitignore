@@ -1,0 +1,22 @@
+# Build output
+build/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.dir/
+
+# Simulation output
+*.pc2
+
+# Editors / IDEs
+.vs/
+.vscode/
+*.user
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
