@@ -20,6 +20,7 @@ FetchContent_MakeAvailable(glm)
 add_executable(clothsim
     src/main.cpp
     src/ClothMesh.cpp
+    src/Solver.cpp
 )
 
 target_include_directories(clothsim PUBLIC
