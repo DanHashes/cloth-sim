@@ -12,9 +12,13 @@ void Solver::step(ClothMesh& mesh, float dt) {
     integrate(mesh, dt);
     relaxConstraints(mesh);
 
-    // Collision is resolved once, after springs have had their say for the
-    // frame -- pushing particles off a collider first and then relaxing
-    // springs could just pull them straight back in.
+    // Self-collision runs before static collision so that, if pushing two
+    // overlapping particles apart happens to shove one into a collider, the
+    // static collision pass (the last word each frame) still catches it.
+    if (m_params.selfCollisionDistance > 0.0f && m_collisionWorld != nullptr) {
+        m_collisionWorld->resolveSelfCollisions(mesh, m_params.selfCollisionDistance);
+    }
+
     if (m_collisionWorld != nullptr) {
         m_collisionWorld->resolveCollisions(mesh);
     }

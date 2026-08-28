@@ -18,6 +18,10 @@ struct SolverParams {
     // iterations converge closer to perfectly inextensible cloth at the cost
     // of CPU time; 3-5 is a common real-time-friendly range.
     int constraintIterations = 5;
+
+    // Minimum allowed distance between any two particles, enforced via
+    // CollisionWorld's spatial hash grid. <= 0 disables self-collision.
+    float selfCollisionDistance = 0.0f;
 };
 
 // Verlet integration plus iterative position-based constraint relaxation.
