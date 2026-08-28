@@ -11,6 +11,13 @@ Solver::Solver(SolverParams params) : m_params(params) {}
 void Solver::step(ClothMesh& mesh, float dt) {
     integrate(mesh, dt);
     relaxConstraints(mesh);
+
+    // Collision is resolved once, after springs have had their say for the
+    // frame -- pushing particles off a collider first and then relaxing
+    // springs could just pull them straight back in.
+    if (m_collisionWorld != nullptr) {
+        m_collisionWorld->resolveCollisions(mesh);
+    }
 }
 
 void Solver::integrate(ClothMesh& mesh, float dt) {

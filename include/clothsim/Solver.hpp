@@ -3,6 +3,7 @@
 #include <glm/vec3.hpp>
 
 #include "clothsim/ClothMesh.hpp"
+#include "clothsim/CollisionWorld.hpp"
 
 namespace clothsim {
 
@@ -28,11 +29,16 @@ class Solver {
 public:
     explicit Solver(SolverParams params = SolverParams());
 
+    // Static colliders (planes, spheres) to test cloth particles against
+    // each step. Pass nullptr (the default) to run with no collision world.
+    void setCollisionWorld(const CollisionWorld* collisionWorld) { m_collisionWorld = collisionWorld; }
+
     // Advances the simulation by one step of size dt (seconds).
     void step(ClothMesh& mesh, float dt);
 
 private:
     SolverParams m_params;
+    const CollisionWorld* m_collisionWorld = nullptr;
 
     void integrate(ClothMesh& mesh, float dt);
     void relaxConstraints(ClothMesh& mesh);

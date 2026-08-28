@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <limits>
 
@@ -5,25 +6,31 @@
 #include <glm/geometric.hpp>
 
 #include "clothsim/ClothMesh.hpp"
+#include "clothsim/CollisionWorld.hpp"
 #include "clothsim/Solver.hpp"
 
 namespace {
 
-void printBoundingBoxAndMaxSpeed(int frame, const clothsim::ClothMesh& cloth) {
+// Reports the bounding box (to see the cloth falling/settling) and how deep
+// the worst-offending particle is inside the sphere, if at all. A negative
+// value here would mean collision resolution failed and cloth is tunneling
+// through the sphere; it should stay >= 0 every frame once particles have
+// been pushed to the surface.
+void printFrameStats(int frame, const clothsim::ClothMesh& cloth, const glm::vec3& sphereCenter, float sphereRadius) {
     glm::vec3 bboxMin(std::numeric_limits<float>::max());
     glm::vec3 bboxMax(std::numeric_limits<float>::lowest());
-    float maxSpeed = 0.0f;
+    float minSurfaceDistance = std::numeric_limits<float>::max();
 
     for (const clothsim::Particle& p : cloth.particles()) {
         bboxMin = glm::min(bboxMin, p.position);
         bboxMax = glm::max(bboxMax, p.position);
-        maxSpeed = std::max(maxSpeed, glm::length(p.position - p.previousPosition));
+        const float surfaceDistance = glm::length(p.position - sphereCenter) - sphereRadius;
+        minSurfaceDistance = std::min(minSurfaceDistance, surfaceDistance);
     }
 
     std::cout << "frame " << frame
-              << " | bbox min (" << bboxMin.x << ", " << bboxMin.y << ", " << bboxMin.z << ")"
-              << " max (" << bboxMax.x << ", " << bboxMax.y << ", " << bboxMax.z << ")"
-              << " | max per-step displacement " << maxSpeed << std::endl;
+              << " | bbox y [" << bboxMin.y << ", " << bboxMax.y << "]"
+              << " | min distance to sphere surface " << minSurfaceDistance << std::endl;
 }
 
 } // namespace
@@ -31,38 +38,44 @@ void printBoundingBoxAndMaxSpeed(int frame, const clothsim::ClothMesh& cloth) {
 int main() {
     std::cout << "cloth-sim init" << std::endl;
 
-    clothsim::ClothMesh cloth(/*width=*/2.0f, /*height=*/2.0f, /*resX=*/10, /*resY=*/10);
+    const float clothWidth = 2.0f;
+    const float clothHeight = 2.0f;
+    clothsim::ClothMesh cloth(clothWidth, clothHeight, /*resX=*/20, /*resY=*/20);
     std::cout << "particles: " << cloth.particles().size() << std::endl;
     std::cout << "springs:   " << cloth.springs().size() << std::endl;
-    std::cout << "triangles: " << cloth.indices().size() / 3 << std::endl;
 
-    // Pin the top row (grid row 0) so the cloth hangs under gravity instead
-    // of just free-falling as a rigid, unattached grid.
-    for (int x = 0; x < cloth.resolutionX(); ++x) {
-        clothsim::Particle& p = cloth.particles()[cloth.particleIndex(x, 0)];
-        p.pinned = true;
-        p.invMass = 0.0f;
+    // Center the cloth over the sphere and lift it above, unpinned, so it
+    // falls freely like a tablecloth being dropped rather than a curtain
+    // hanging from a fixed edge.
+    for (clothsim::Particle& p : cloth.particles()) {
+        p.position.x -= clothWidth * 0.5f;
+        p.position.z -= clothHeight * 0.5f;
+        p.position.y += 1.2f;
+        p.previousPosition = p.position;
     }
 
-    // Stable solver (Step 4): Verlet integration + iterative position-based
-    // constraint relaxation instead of Step 3's force-based springs. Rest
-    // lengths are enforced directly rather than approached via a force, so
-    // there's no overshoot to compound -- the mesh should settle into a
-    // steady drape instead of oscillating or exploding.
+    const glm::vec3 sphereCenter(0.0f, 0.0f, 0.0f);
+    const float sphereRadius = 0.6f;
+
+    clothsim::CollisionWorld world;
+    world.addSphere(clothsim::SphereCollider{sphereCenter, sphereRadius});
+    // Ground plane well below the sphere as a safety net for anything that
+    // slides off its sides.
+    world.addPlane(clothsim::PlaneCollider{glm::vec3(0.0f, -1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)});
+
     clothsim::SolverParams params;
     params.constraintIterations = 5;
     params.damping = 0.96f;
     clothsim::Solver solver(params);
+    solver.setCollisionWorld(&world);
 
     const float dt = 1.0f / 60.0f;
-    const int frameCount = 300;
-
-    std::cout << "constraint iterations: " << params.constraintIterations << std::endl;
+    const int frameCount = 200;
 
     for (int frame = 1; frame <= frameCount; ++frame) {
         solver.step(cloth, dt);
-        if (frame % 20 == 0) {
-            printBoundingBoxAndMaxSpeed(frame, cloth);
+        if (frame % 10 == 0) {
+            printFrameStats(frame, cloth, sphereCenter, sphereRadius);
         }
     }
 
