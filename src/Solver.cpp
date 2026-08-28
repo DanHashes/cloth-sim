@@ -9,48 +9,60 @@ namespace clothsim {
 Solver::Solver(SolverParams params) : m_params(params) {}
 
 void Solver::step(ClothMesh& mesh, float dt) {
-    std::vector<Particle>& particles = mesh.particles();
-    std::vector<glm::vec3> forces(particles.size(), glm::vec3(0.0f));
+    integrate(mesh, dt);
+    relaxConstraints(mesh);
+}
 
-    // Naive force-based springs: each spring pulls/pushes its two particles
-    // directly toward their rest length, proportional to how far they've
-    // stretched or compressed (Hooke's law). Nothing here prevents the
-    // stretch from growing unbounded step to step -- that's the point of
-    // this baseline.
-    for (const SpringConstraint& spring : mesh.springs()) {
-        const glm::vec3& posA = particles[spring.particleA].position;
-        const glm::vec3& posB = particles[spring.particleB].position;
-
-        const glm::vec3 delta = posB - posA;
-        const float dist = glm::length(delta);
-        if (dist < 1e-8f) {
-            continue;
-        }
-
-        const glm::vec3 direction = delta / dist;
-        const float stretch = dist - spring.restLength;
-        const glm::vec3 forceOnA = direction * (m_params.springStiffness * stretch);
-
-        forces[spring.particleA] += forceOnA;
-        forces[spring.particleB] -= forceOnA;
-    }
-
-    // Verlet integration: velocity is implicit in (position - previousPosition),
-    // so we never store it explicitly. damping < 1 bleeds off that implicit
-    // velocity each step to emulate air resistance / energy loss.
-    for (std::size_t i = 0; i < particles.size(); ++i) {
-        Particle& p = particles[i];
+void Solver::integrate(ClothMesh& mesh, float dt) {
+    // Gravity is the only force here now -- springs are no longer forces at
+    // all, they're hard constraints resolved in relaxConstraints() below.
+    for (Particle& p : mesh.particles()) {
         if (p.pinned) {
             p.previousPosition = p.position;
             continue;
         }
 
-        const glm::vec3 acceleration = m_params.gravity + forces[i] * p.invMass;
         const glm::vec3 velocityTerm = (p.position - p.previousPosition) * m_params.damping;
-        const glm::vec3 newPosition = p.position + velocityTerm + acceleration * dt * dt;
+        const glm::vec3 newPosition = p.position + velocityTerm + m_params.gravity * dt * dt;
 
         p.previousPosition = p.position;
         p.position = newPosition;
+    }
+}
+
+void Solver::relaxConstraints(ClothMesh& mesh) {
+    std::vector<Particle>& particles = mesh.particles();
+
+    // Jakobsen-style relaxation: repeatedly walk every spring and directly
+    // pull/push its two particles apart or together until they sit exactly
+    // restLength apart. Each pass only partially resolves every spring
+    // (satisfying one spring can un-satisfy a neighboring one), so we repeat
+    // several passes per frame until the whole mesh converges toward a
+    // consistent shape. This never overshoots the way a force can, because
+    // we're setting position directly rather than integrating an
+    // acceleration -- that's what makes it unconditionally stable.
+    for (int iteration = 0; iteration < m_params.constraintIterations; ++iteration) {
+        for (const SpringConstraint& spring : mesh.springs()) {
+            Particle& a = particles[spring.particleA];
+            Particle& b = particles[spring.particleB];
+
+            const float invMassSum = a.invMass + b.invMass;
+            if (invMassSum <= 0.0f) {
+                continue; // both endpoints pinned, nothing to correct
+            }
+
+            const glm::vec3 delta = b.position - a.position;
+            const float dist = glm::length(delta);
+            if (dist < 1e-8f) {
+                continue;
+            }
+
+            const float correctionMagnitude = (dist - spring.restLength) / dist;
+            const glm::vec3 correction = delta * correctionMagnitude;
+
+            a.position += correction * (a.invMass / invMassSum);
+            b.position -= correction * (b.invMass / invMassSum);
+        }
     }
 }
 

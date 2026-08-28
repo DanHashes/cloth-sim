@@ -11,13 +11,19 @@ namespace clothsim {
 // as a default argument value of its own enclosing class's constructor.
 struct SolverParams {
     glm::vec3 gravity{0.0f, -9.81f, 0.0f};
-    float damping = 0.99f;          // velocity retained per step (1.0 = none)
-    float springStiffness = 4000.0f; // Hooke's law spring constant, F = -k * (dist - restLength)
+    float damping = 0.99f; // velocity retained per step (1.0 = none)
+
+    // Number of constraint-relaxation passes per step (Jakobsen-style). More
+    // iterations converge closer to perfectly inextensible cloth at the cost
+    // of CPU time; 3-5 is a common real-time-friendly range.
+    int constraintIterations = 5;
 };
 
-// Naive baseline solver: Verlet integration plus force-based (Hooke's law)
-// springs. No constraint relaxation -- this is the deliberately unstable
-// "before" state that Step 4 replaces with position-based constraints.
+// Verlet integration plus iterative position-based constraint relaxation.
+// Unlike Step 3's force-based springs, this never overshoots: each spring is
+// satisfied by directly moving its two particles to the correct rest
+// distance (weighted by inverse mass, respecting pinned particles), so the
+// solver stays stable regardless of how stiff the cloth "feels".
 class Solver {
 public:
     explicit Solver(SolverParams params = SolverParams());
@@ -27,6 +33,9 @@ public:
 
 private:
     SolverParams m_params;
+
+    void integrate(ClothMesh& mesh, float dt);
+    void relaxConstraints(ClothMesh& mesh);
 };
 
 } // namespace clothsim

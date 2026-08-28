@@ -44,19 +44,24 @@ int main() {
         p.invMass = 0.0f;
     }
 
-    // Naive baseline solver (Step 3): Verlet integration + force-based
-    // Hooke's-law springs, no constraint relaxation. At this stiffness the
-    // per-step spring correction overshoots the rest length by more than it
-    // started with, so the error compounds every frame and the simulation
-    // diverges to NaN within ~30 frames -- that explosion is deliberate,
-    // and gets fixed by Step 4's constraint relaxation.
-    clothsim::Solver solver;
+    // Stable solver (Step 4): Verlet integration + iterative position-based
+    // constraint relaxation instead of Step 3's force-based springs. Rest
+    // lengths are enforced directly rather than approached via a force, so
+    // there's no overshoot to compound -- the mesh should settle into a
+    // steady drape instead of oscillating or exploding.
+    clothsim::SolverParams params;
+    params.constraintIterations = 5;
+    params.damping = 0.96f;
+    clothsim::Solver solver(params);
+
     const float dt = 1.0f / 60.0f;
-    const int frameCount = 120;
+    const int frameCount = 300;
+
+    std::cout << "constraint iterations: " << params.constraintIterations << std::endl;
 
     for (int frame = 1; frame <= frameCount; ++frame) {
         solver.step(cloth, dt);
-        if (frame % 10 == 0) {
+        if (frame % 20 == 0) {
             printBoundingBoxAndMaxSpeed(frame, cloth);
         }
     }
