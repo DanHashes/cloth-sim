@@ -23,6 +23,7 @@ add_executable(clothsim
     src/Solver.cpp
     src/CollisionWorld.cpp
     src/SpatialHashGrid.cpp
+    src/PC2Writer.cpp
 )
 
 target_include_directories(clothsim PUBLIC

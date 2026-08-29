@@ -34,7 +34,8 @@ void Solver::integrate(ClothMesh& mesh, float dt) {
         }
 
         const glm::vec3 velocityTerm = (p.position - p.previousPosition) * m_params.damping;
-        const glm::vec3 newPosition = p.position + velocityTerm + m_params.gravity * dt * dt;
+        const glm::vec3 acceleration = m_params.gravity + m_params.wind;
+        const glm::vec3 newPosition = p.position + velocityTerm + acceleration * dt * dt;
 
         p.previousPosition = p.position;
         p.position = newPosition;

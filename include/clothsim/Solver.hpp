@@ -12,7 +12,8 @@ namespace clothsim {
 // as a default argument value of its own enclosing class's constructor.
 struct SolverParams {
     glm::vec3 gravity{0.0f, -9.81f, 0.0f};
-    float damping = 0.99f; // velocity retained per step (1.0 = none)
+    glm::vec3 wind{0.0f, 0.0f, 0.0f}; // constant additional acceleration, e.g. for a flag scene
+    float damping = 0.99f;            // velocity retained per step (1.0 = none)
 
     // Number of constraint-relaxation passes per step (Jakobsen-style). More
     // iterations converge closer to perfectly inextensible cloth at the cost
