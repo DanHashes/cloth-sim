@@ -9,6 +9,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+option(CLOTHSIM_BUILD_TESTS "Build the Catch2 test suite" ON)
+
 include(FetchContent)
 FetchContent_Declare(
     glm
@@ -17,8 +19,10 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-add_executable(clothsim
-    src/main.cpp
+# Everything except main.cpp lives in a static library so the test suite can
+# link against the exact same simulation code without pulling in main()
+# (which would collide with Catch2's own main).
+add_library(clothsim_lib STATIC
     src/ClothMesh.cpp
     src/Solver.cpp
     src/CollisionWorld.cpp
@@ -27,8 +31,16 @@ add_executable(clothsim
     src/SceneConfig.cpp
 )
 
-target_include_directories(clothsim PUBLIC
+target_include_directories(clothsim_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(clothsim PUBLIC glm::glm)
+target_link_libraries(clothsim_lib PUBLIC glm::glm)
+
+add_executable(clothsim src/main.cpp)
+target_link_libraries(clothsim PRIVATE clothsim_lib)
+
+if(CLOTHSIM_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
