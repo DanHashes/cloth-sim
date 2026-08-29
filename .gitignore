@@ -11,6 +11,10 @@ compile_commands.json
 # Simulation output
 *.pc2
 
+# Python
+__pycache__/
+*.pyc
+
 # Editors / IDEs
 .vs/
 .vscode/

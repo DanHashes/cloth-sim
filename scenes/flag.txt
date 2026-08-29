@@ -1,0 +1,18 @@
+# flag.txt -- a flag pinned along its left edge (a full column, not just
+# the top row), blown sideways and slightly upward by a steady wind.
+
+width 2.5
+height 1.5
+resx 36
+resy 22
+
+iterations 5
+damping 0.99
+gravity 4.0
+wind 9.0 0.5 2.0
+
+pin_mode left_column
+
+frames 240
+fps 60
+output flag.pc2

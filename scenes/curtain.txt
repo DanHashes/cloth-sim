@@ -1,0 +1,18 @@
+# curtain.txt -- a high-resolution curtain hanging from a pinned top row.
+# Demonstrates: constraint relaxation settling into a stable drape (Step 4)
+# at a resolution too fine to be practical with the naive Step 3 solver.
+
+width 2.0
+height 3.0
+resx 30
+resy 45
+
+iterations 6
+damping 0.97
+gravity 9.81
+
+pin_mode top_row
+
+frames 240
+fps 60
+output curtain.pc2

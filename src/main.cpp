@@ -12,40 +12,17 @@
 #include "clothsim/ClothMesh.hpp"
 #include "clothsim/CollisionWorld.hpp"
 #include "clothsim/PC2Writer.hpp"
+#include "clothsim/SceneConfig.hpp"
 #include "clothsim/Solver.hpp"
 
 namespace {
-
-struct CliConfig {
-    float width = 2.0f;
-    float height = 2.0f;
-    int resX = 20;
-    int resY = 20;
-
-    int constraintIterations = 5;
-    float damping = 0.98f;
-    float gravity = 9.81f;
-    glm::vec3 wind{0.0f, 0.0f, 0.0f};
-    float selfCollisionDistance = 0.0f;
-    bool pinTop = true;
-
-    bool hasSphere = false;
-    glm::vec3 sphereCenter{0.0f};
-    float sphereRadius = 0.5f;
-
-    bool hasPlane = false;
-    glm::vec3 planePoint{0.0f};
-    glm::vec3 planeNormal{0.0f, 1.0f, 0.0f};
-
-    int frameCount = 300;
-    float fps = 60.0f;
-    std::string outputPath = "cloth_output.pc2";
-};
 
 void printUsage() {
     std::cout <<
         "cloth-sim: cloth physics simulator with PC2 point-cache export\n\n"
         "Usage: clothsim [options]\n"
+        "  --scene PATH              load settings from a scene file (see scenes/*.txt);\n"
+        "                            any flags after this override individual settings\n"
         "  --width F                 cloth width in world units (default 2.0)\n"
         "  --height F                cloth height in world units (default 2.0)\n"
         "  --resx N                  particles across (default 20)\n"
@@ -55,7 +32,9 @@ void printUsage() {
         "  --gravity F               gravity magnitude along -Y (default 9.81)\n"
         "  --wind X Y Z              constant wind acceleration (default 0 0 0)\n"
         "  --self-collision F        minimum particle separation, 0 disables (default 0)\n"
-        "  --no-pin-top              do not pin the top row (free-falling sheet)\n"
+        "  --pin-mode MODE           none | top_row | left_column (default top_row)\n"
+        "  --center                  recenter the flat grid in X/Z before pinning\n"
+        "  --offset X Y Z            translate the flat grid before pinning (default 0 0 0)\n"
         "  --sphere CX CY CZ R       add a sphere collider\n"
         "  --plane PX PY PZ NX NY NZ add a plane collider\n"
         "  --frames N                number of frames to simulate (default 300)\n"
@@ -64,9 +43,16 @@ void printUsage() {
         "  --help                    show this message\n";
 }
 
+clothsim::PinMode parsePinMode(const std::string& value) {
+    if (value == "none") return clothsim::PinMode::None;
+    if (value == "top_row") return clothsim::PinMode::TopRow;
+    if (value == "left_column") return clothsim::PinMode::LeftColumn;
+    throw std::runtime_error("--pin-mode must be one of: none, top_row, left_column (got '" + value + "')");
+}
+
 enum class ParseResult { Success, ShowHelp, Error };
 
-ParseResult parseArgs(int argc, char** argv, CliConfig& config) {
+ParseResult parseArgs(int argc, char** argv, clothsim::SceneConfig& config) {
     auto needArg = [&](int i) {
         if (i + 1 >= argc) {
             throw std::runtime_error("missing value for argument: " + std::string(argv[i]));
@@ -79,6 +65,9 @@ ParseResult parseArgs(int argc, char** argv, CliConfig& config) {
 
             if (arg == "--help") {
                 return ParseResult::ShowHelp;
+            } else if (arg == "--scene") {
+                needArg(i);
+                config = clothsim::loadSceneConfig(argv[++i]);
             } else if (arg == "--width") {
                 needArg(i);
                 config.width = std::stof(argv[++i]);
@@ -110,8 +99,18 @@ ParseResult parseArgs(int argc, char** argv, CliConfig& config) {
             } else if (arg == "--self-collision") {
                 needArg(i);
                 config.selfCollisionDistance = std::stof(argv[++i]);
-            } else if (arg == "--no-pin-top") {
-                config.pinTop = false;
+            } else if (arg == "--pin-mode") {
+                needArg(i);
+                config.pinMode = parsePinMode(argv[++i]);
+            } else if (arg == "--center") {
+                config.center = true;
+            } else if (arg == "--offset") {
+                if (i + 3 >= argc) {
+                    throw std::runtime_error("--offset requires 3 values: X Y Z");
+                }
+                config.offset.x = std::stof(argv[++i]);
+                config.offset.y = std::stof(argv[++i]);
+                config.offset.z = std::stof(argv[++i]);
             } else if (arg == "--sphere") {
                 if (i + 4 >= argc) {
                     throw std::runtime_error("--sphere requires 4 values: CX CY CZ R");
@@ -157,7 +156,7 @@ ParseResult parseArgs(int argc, char** argv, CliConfig& config) {
 } // namespace
 
 int main(int argc, char** argv) {
-    CliConfig config;
+    clothsim::SceneConfig config;
     switch (parseArgs(argc, argv, config)) {
         case ParseResult::ShowHelp:
             printUsage();
@@ -171,12 +170,38 @@ int main(int argc, char** argv) {
 
     clothsim::ClothMesh cloth(config.width, config.height, config.resX, config.resY);
 
-    if (config.pinTop) {
-        for (int x = 0; x < cloth.resolutionX(); ++x) {
-            clothsim::Particle& p = cloth.particles()[cloth.particleIndex(x, 0)];
-            p.pinned = true;
-            p.invMass = 0.0f;
+    if (config.center) {
+        for (clothsim::Particle& p : cloth.particles()) {
+            p.position.x -= config.width * 0.5f;
+            p.position.z -= config.height * 0.5f;
         }
+    }
+    if (config.offset != glm::vec3(0.0f)) {
+        for (clothsim::Particle& p : cloth.particles()) {
+            p.position += config.offset;
+        }
+    }
+    for (clothsim::Particle& p : cloth.particles()) {
+        p.previousPosition = p.position;
+    }
+
+    switch (config.pinMode) {
+        case clothsim::PinMode::None:
+            break;
+        case clothsim::PinMode::TopRow:
+            for (int x = 0; x < cloth.resolutionX(); ++x) {
+                clothsim::Particle& p = cloth.particles()[cloth.particleIndex(x, 0)];
+                p.pinned = true;
+                p.invMass = 0.0f;
+            }
+            break;
+        case clothsim::PinMode::LeftColumn:
+            for (int y = 0; y < cloth.resolutionY(); ++y) {
+                clothsim::Particle& p = cloth.particles()[cloth.particleIndex(0, y)];
+                p.pinned = true;
+                p.invMass = 0.0f;
+            }
+            break;
     }
 
     clothsim::CollisionWorld world;

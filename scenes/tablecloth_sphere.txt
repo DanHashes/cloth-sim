@@ -1,0 +1,24 @@
+# tablecloth_sphere.txt -- an unpinned sheet centered above a sphere and
+# dropped onto it, draping over the sphere like a tablecloth. A ground
+# plane sits well below the sphere as a safety net for any part of the
+# cloth that slides off its sides.
+
+width 2.0
+height 2.0
+resx 24
+resy 24
+
+iterations 5
+damping 0.96
+gravity 9.81
+
+pin_mode none
+center true
+offset 0.0 1.2 0.0
+
+sphere 0.0 0.0 0.0 0.6
+plane 0.0 -1.5 0.0 0.0 1.0 0.0
+
+frames 200
+fps 60
+output tablecloth_sphere.pc2
